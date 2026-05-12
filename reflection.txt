@@ -1,0 +1,65 @@
+Project Reflection
+
+Overview
+--------
+For this project, I built a desktop sign-in and sign-up application using Python, Tkinter, and
+SQLite3. The application allows users to create accounts, log in, and view their account details,
+all stored locally in a database file. Over the course of development, the project grew from a
+basic login form into a full-featured application with a custom UI, light and dark mode, a
+password strength meter, a Remember Me feature, and an admin panel with CSV export. All of this
+runs from a single Python file with no external dependencies.
+
+
+What I Learned
+--------------
+Going into this project, I had a solid understanding of Python, but have never worked with databases
+before.
+
+On the database side, I learned the basics of how SQLite3 works, how user data gets saved to a
+file, how to look up a user by username, and how to insert a new record when someone signs up.
+Before this project I had never worked with a database, so understanding that the app was reading
+from and writing to an actual file on disk each time someone logged in or created an account helped
+me see how data persistence works in practice.
+
+Password security was another area I had to learn about. I know already that you should never save
+the original password in plain text, so I used SHA-256 hashing. So when a user logs in, the app just
+hashes what they typed and checks if it matches. I figured that SHA-256 is fine for a demo but
+that real applications use algorithms like bcrypt or argon2, because they are specifically designed
+to be slow, which makes brute-force attacks harder.
+
+
+How AI Was Used
+---------------
+I used an AI assistant throughout this project to help implement features, debug problems, and
+understand code I was unfamiliar with. Rather than writing all of the code myself from scratch,
+I would describe what I wanted and then review what the AI produced, ask follow-up questions,
+and make adjustments based on what I actually wanted the program to look like and do.
+
+The AI was most useful for things like setting up the database layer, structuring the Tkinter
+classes, and implementing the more math-heavy parts like the icon animation. It also helped make
+the GUI look good, which is a headache to understand anyway, in terms of styling and customization.
+I will say, it did most of the heavy lifting along with my executive direction because I simply
+don't know how to implement some of the more advanced features and how to put it all together.
+
+That said, not everything the AI produced was exactly what I wanted. I changed the app's name
+from an earlier suggestion to "MyAccount" because I wanted something simpler. I also directed
+the layout decisions, like where buttons should go, how screens should flow, what the window sizes
+should be. I went through several rounds of adjustments to get things looking the way I
+envisioned. When something looked off or was cut off by the window size, I identified the
+problem and described what needed to change.
+
+In that sense, the AI worked more like a knowledgeable collaborator than something that just
+produced a finished product. I still had to understand enough about what the code was doing
+to give useful feedback and catch when something was wrong. Writing comments for the code at
+the end of the project helped reinforce that understanding, I had to actually read through
+each section and decide what was worth explaining and why.
+
+
+Conclusion
+----------
+This project taught me more than I expected. I came in wanting to build a login form and ended
+up learning about databases, basic security, GUI styling, and color math along the way.
+Using AI as a tool accelerated a lot of the implementation, but it also pushed me to ask better
+questions and think more carefully about the decisions being made in the code. The result is a
+program I understand well enough to explain, modify, and build on, which feels like the right
+outcome for a learning project.
