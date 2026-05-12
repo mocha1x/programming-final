@@ -1,5 +1,5 @@
 """
-UserVault — single file version
+MyAccount
 Run: python app.py
 """
 
@@ -18,26 +18,34 @@ from datetime import datetime
 
 DB           = "users.db"
 REMEMBER_FILE = "remember.json"
+
+# Regex pattern that checks if an email looks valid (has something@something.something)
 EMAIL_RE     = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 ADMIN_USER = "admin"
 ADMIN_HASH = "97c94ebe5d767a353b77f3c0ce2d429741f2e8c99473c3c150e2faa3d14c9da6"
+# Encrypted admin credentials for admin portal
 
 FONT  = "Segoe UI"
 
+# Light and dark color palettes — each key is a role, value is a hex color
 LIGHT = dict(BG="#f5f5f7", SURFACE="#ffffff", BORDER="#d2d2d7",
              ACCENT="#0071e3", DANGER="#ff3b30", SUCCESS="#34c759",
              TEXT="#1d1d1f",   MUTED="#6e6e73")
 DARK  = dict(BG="#1c1c1e",  SURFACE="#2c2c2e", BORDER="#3a3a3c",
              ACCENT="#0a84ff", DANGER="#ff453a", SUCCESS="#30d158",
              TEXT="#f5f5f7",   MUTED="#98989d")
-_dark = False
+_dark = False  # tracks whether dark mode is currently on
 
+# Unpack the light palette into module-level globals so widgets can reference them directly.
+# When the theme switches, _apply_theme() overwrites these with the dark palette values.
 BG, SURFACE, BORDER = LIGHT["BG"], LIGHT["SURFACE"], LIGHT["BORDER"]
 ACCENT, DANGER, SUCCESS = LIGHT["ACCENT"], LIGHT["DANGER"], LIGHT["SUCCESS"]
 TEXT, MUTED = LIGHT["TEXT"], LIGHT["MUTED"]
 
 def _interp(c1, c2, t):
+    # Smoothly blends two hex colors together based on t (0.0 = full c1, 1.0 = full c2).
+    # Used to animate the sun/moon icon fading during the theme toggle.
     r = int(int(c1[1:3], 16) * (1-t) + int(c2[1:3], 16) * t)
     g = int(int(c1[3:5], 16) * (1-t) + int(c2[3:5], 16) * t)
     b = int(int(c1[5:7], 16) * (1-t) + int(c2[5:7], 16) * t)
@@ -46,6 +54,7 @@ def _interp(c1, c2, t):
 # ── Database ──────────────────────────────────────────────────────────────────
 
 def init_db():
+    # Creates the database file and users table if they don't already exist.
     with sqlite3.connect(DB) as c:
         c.execute("""CREATE TABLE IF NOT EXISTS users (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,16 +65,20 @@ def init_db():
         )""")
 
 def insert_user(username, email, password_hash):
+    # The ? placeholders let SQLite safely insert the values
+    # without any risk of SQL injection from weird characters in the user's input.
     with sqlite3.connect(DB) as c:
         c.execute("INSERT INTO users (username,email,password,created_at) VALUES (?,?,?,?)",
                   (username, email, password_hash, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
 
 def get_user(username):
+    # row_factory makes the result behave like a dict (row["username"]) instead of a plain tuple.
     with sqlite3.connect(DB) as c:
         c.row_factory = sqlite3.Row
         return c.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
 
 def user_exists(username):
+    # SELECT 1 is a lightweight check — we don't need the actual row, just whether one exists.
     with sqlite3.connect(DB) as c:
         return c.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone() is not None
 
@@ -83,18 +96,22 @@ def get_all_users():
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 def hash_pw(pw):
+    # Converts the password to bytes, runs it through SHA-256, and returns the hex string.
     return hashlib.sha256(pw.encode()).hexdigest()
 
 def verify_pw(plain, stored):
+    # Hashes the plain-text attempt and compares it to what's in the database.
     return hash_pw(plain) == stored
 
 # ── Remember Me ───────────────────────────────────────────────────────────────
 
 def save_remember(username):
+    # Writes the username to a small JSON file so it can be pre-filled next launch.
     with open(REMEMBER_FILE, "w") as f:
         json.dump({"username": username}, f)
 
 def load_remember():
+    # Returns the saved username, or an empty string if the file doesn't exist or is corrupted.
     try:
         with open(REMEMBER_FILE) as f:
             return json.load(f).get("username", "")
@@ -102,6 +119,7 @@ def load_remember():
         return ""
 
 def clear_remember():
+    # Overwrites the file with an empty object
     try:
         with open(REMEMBER_FILE, "w") as f:
             json.dump({}, f)
@@ -114,12 +132,13 @@ def pw_strength(pw):
     """Returns (bars 0-4, label, color) for the given password."""
     if not pw:
         return 0, "", MUTED
+    # Each rule that passes adds 1 to the score, which determines the strength label.
     score = 0
     if len(pw) >= 8:                    score += 1
     if len(pw) >= 12:                   score += 1
-    if re.search(r"[A-Z]", pw):         score += 1
-    if re.search(r"[0-9]", pw):         score += 1
-    if re.search(r"[^A-Za-z0-9]", pw): score += 1
+    if re.search(r"[A-Z]", pw):         score += 1  # has an uppercase letter
+    if re.search(r"[0-9]", pw):         score += 1  # has a number
+    if re.search(r"[^A-Za-z0-9]", pw): score += 1  # has a special character
     if score <= 1: return 1, "Weak",   DANGER
     if score == 2: return 2, "Fair",   "#ff9500"
     if score <= 4: return 3, "Good",   "#ffcc00"
@@ -130,6 +149,7 @@ def pw_strength(pw):
 _FIELD_H = 42
 
 def _round_rect(cv, x1, y1, x2, y2, r, **kw):
+    # Tkinter Canvas has no built-in rounded rectangle, so we fake it with a smooth polygon.
     pts = [x1+r, y1,  x2-r, y1,  x2, y1,  x2, y1+r,
            x2, y2-r,  x2, y2,  x2-r, y2,  x1+r, y2,
            x1, y2,  x1, y2-r,  x1, y1+r,  x1, y1]
@@ -139,6 +159,7 @@ def field(parent, label, show=""):
     if label:
         tk.Label(parent, text=label, bg=SURFACE, fg=MUTED,
                  font=(FONT, 9, "bold"), anchor="w").pack(fill="x")
+    # The entry lives inside a Canvas so we can draw a custom rounded border around it.
     cv = tk.Canvas(parent, height=_FIELD_H, bg=SURFACE, highlightthickness=0)
     cv.pack(fill="x", pady=(2, 10))
     entry = tk.Entry(cv, show=show, bg=SURFACE, fg=TEXT,
@@ -153,21 +174,24 @@ def field(parent, label, show=""):
         cv.create_window(12, _FIELD_H//2, anchor="w", window=entry,
                          width=w-24, height=_FIELD_H-14)
 
+    # Configure fires when the widget gets its real size, which triggers the first draw.
     cv.bind("<Configure>", lambda e: _draw())
-    entry.bind("<FocusIn>",  lambda e: _draw(ACCENT))
-    entry.bind("<FocusOut>", lambda e: _draw(BORDER))
+    entry.bind("<FocusIn>",  lambda e: _draw(ACCENT))  # highlight border when typing
+    entry.bind("<FocusOut>", lambda e: _draw(BORDER))  # reset border when done
     return entry
 
 _BTN_H  = 44
 _CARD_R = 10
 
 def _darken(color, amount=22):
+    # Subtracts from each color channel to get a slightly darker shade for the hover effect.
     r = max(0, int(color[1:3], 16) - amount)
     g = max(0, int(color[3:5], 16) - amount)
     b = max(0, int(color[5:7], 16) - amount)
     return f"#{r:02x}{g:02x}{b:02x}"
 
 def btn(parent, text, color, command):
+    # Same Canvas trick as field() so we can draw rounded corners on the button.
     cv = tk.Canvas(parent, height=_BTN_H, bg=parent.cget("bg"),
                    highlightthickness=0, cursor="hand2")
 
@@ -179,8 +203,8 @@ def btn(parent, text, color, command):
                        fill="#fff", font=(FONT, 10, "bold"))
 
     cv.bind("<Configure>", lambda e: _draw())
-    cv.bind("<Enter>",     lambda e: _draw(_darken(color)))
-    cv.bind("<Leave>",     lambda e: _draw(color))
+    cv.bind("<Enter>",     lambda e: _draw(_darken(color)))  # darken on hover
+    cv.bind("<Leave>",     lambda e: _draw(color))           # restore on mouse out
     cv.bind("<Button-1>",  lambda e: command())
     return cv
 
@@ -195,6 +219,7 @@ def card(parent):
         cw = cv.winfo_width() or 360
         ch = content.winfo_reqheight() or 40
         total_h = ch + 8
+        # Skip the redraw if nothing actually changed, to avoid flickering.
         if cw == _prev[0] and total_h == _prev[1]:
             return
         _prev[0], _prev[1] = cw, total_h
@@ -203,8 +228,9 @@ def card(parent):
         cv.delete("bg")
         _round_rect(cv, 0, 0, cw, total_h, _CARD_R,
                     fill=SURFACE, outline=BORDER, width=1, tags="bg")
-        cv.tag_lower("bg")
+        cv.tag_lower("bg")  # keep the background rectangle behind the content
 
+    # Resize fires when the card width changes or when child widgets change the height.
     cv.bind("<Configure>",    lambda e: _resize())
     content.bind("<Configure>", lambda e: _resize())
     inner = tk.Frame(content, bg=SURFACE)
@@ -212,6 +238,7 @@ def card(parent):
     return inner
 
 def err_label(parent):
+    # A blank red label that screens can fill in with an error message when needed.
     lbl = tk.Label(parent, text="", bg=SURFACE, fg=DANGER,
                    font=(FONT, 9), wraplength=300, justify="left")
     lbl.pack(fill="x", pady=(0, 8))
@@ -221,6 +248,7 @@ class Checkbox(tk.Frame):
     def __init__(self, parent, text, variable):
         bg = parent.cget("bg")
         super().__init__(parent, bg=bg)
+        # ttk.Style lets us override the default checkbox look to match our theme.
         s = ttk.Style()
         s.configure("CB.TCheckbutton",
                     background=bg, foreground=MUTED,
@@ -252,15 +280,18 @@ class ThemeToggle(tk.Canvas):
 
         self.create_oval(1, 1, W-1, H-1, fill=SURFACE, outline=BORDER, width=1)
 
+        # t goes from 0 (sun fully visible) to 1 (moon fully visible).
+        # The two alphas overlap so there's a brief crossfade in the middle.
         sun_alpha  = max(0.0, 1.0 - t / 0.6)
         moon_alpha = max(0.0, min(1.0, (t - 0.4) / 0.6))
 
-        # ── Sun: yellow core + 8 rays ─────────────────────────────────
+        # Sun: a small circle in the center with 8 short rays spread evenly around it.
         if sun_alpha > 0.02:
             sc = _interp(SURFACE, "#ff9f0a", sun_alpha)
             sr = 4
             self.create_oval(cx-sr, cy-sr, cx+sr, cy+sr, fill=sc, outline="")
             for i in range(8):
+                # Trig places each ray at 45 degree intervals around the center.
                 a  = math.radians(i * 45)
                 x1 = cx + 6  * math.cos(a)
                 y1 = cy + 6  * math.sin(a)
@@ -269,7 +300,8 @@ class ThemeToggle(tk.Canvas):
                 self.create_line(x1, y1, x2, y2,
                                  fill=sc, width=2, capstyle="round")
 
-        # ── Moon: circle with bite to form crescent ───────────────────
+        # Moon: draw a full circle, then cover part of it with a background-colored circle
+        # to create the crescent shape.
         if moon_alpha > 0.02:
             mr  = 7
             mc  = _interp(SURFACE, "#98989d", moon_alpha)
@@ -283,7 +315,7 @@ class ThemeToggle(tk.Canvas):
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("UserVault")
+        self.title("MyAccount")
         self.geometry("460x580")
         self.resizable(False, False)
         self.configure(bg=BG)
@@ -310,6 +342,7 @@ class App(tk.Tk):
         self._container.grid_rowconfigure(0, weight=1)
         self._container.grid_columnconfigure(0, weight=1)
 
+        # All screens share the same grid cell so only one is visible at a time.
         self._frames = {}
         self._build_screens()
         self.show("LoginScreen")
@@ -324,7 +357,7 @@ class App(tk.Tk):
         self._current    = name
         self._current_kw = kw
         f = self._frames[name]
-        f.tkraise()
+        f.tkraise()  # bring the target screen to the front
         if hasattr(f, "on_show"):
             f.on_show(**kw)
 
@@ -333,22 +366,24 @@ class App(tk.Tk):
             return
         self._animating = True
         going_dark = not _dark
-        TOTAL, MS = 20, 14   # ~280 ms total
+        TOTAL, MS = 20, 14   # 20 steps at 14ms each = ~280ms total
 
         def step(i=0):
-            # Icon morphs fully before theme snaps — no window transparency
+            # Animate the icon frame by frame using after(), which is like a non-blocking timer.
             t_icon = (i / TOTAL) if going_dark else (1.0 - i / TOTAL)
             self._toggle_btn.draw(t_icon)
             if i < TOTAL:
                 self.after(MS, lambda: step(i + 1))
             else:
-                # Icon has finished morphing; now snap colours instantly
+                # Icon has finished morphing, now snap the colors instantly.
                 self._apply_theme(going_dark)
                 self._animating = False
 
         step()
 
     def _apply_theme(self, going_dark):
+        # Tkinter widgets can't re-theme themselves, so we update the color globals
+        # then destroy and rebuild all screens from scratch with the new colors.
         global _dark, BG, SURFACE, BORDER, ACCENT, DANGER, SUCCESS, TEXT, MUTED
         _dark = going_dark
         th = DARK if going_dark else LIGHT
@@ -356,7 +391,6 @@ class App(tk.Tk):
         ACCENT, DANGER, SUCCESS = th["ACCENT"], th["DANGER"], th["SUCCESS"]
         TEXT, MUTED = th["TEXT"], th["MUTED"]
 
-        # Update persistent chrome
         self.configure(bg=BG)
         self._container.configure(bg=BG)
         self._footer.configure(bg=BG)
@@ -377,7 +411,7 @@ class LoginScreen(tk.Frame):
         super().__init__(parent, bg=BG)
         self.app = app
 
-        tk.Label(self, text="UserVault", bg=BG, fg=TEXT,
+        tk.Label(self, text="MyAccount", bg=BG, fg=TEXT,
                  font=(FONT, 22, "bold")).pack(pady=(44, 4))
         tk.Label(self, text="Sign in to your account", bg=BG, fg=MUTED,
                  font=(FONT, 9)).pack(pady=(0, 24))
@@ -410,6 +444,7 @@ class LoginScreen(tk.Frame):
         lnk.bind("<Button-1>", lambda e: app.show("SignupScreen"))
 
     def _toggle(self):
+        # Flip between showing and hiding the password text.
         showing = self.p.cget("show") == ""
         self.p.config(show="*" if showing else "")
         self.eye.config(text="Show password" if showing else "Hide password")
@@ -422,6 +457,7 @@ class LoginScreen(tk.Frame):
             self.err.config(text="All fields are required.")
             return
 
+        # Hash the password once and reuse it for both the admin check and user check.
         ph = hash_pw(p)
         if u == ADMIN_USER and ph == ADMIN_HASH:
             save_remember(u) if self.remember_var.get() else clear_remember()
@@ -431,6 +467,7 @@ class LoginScreen(tk.Frame):
 
         user = get_user(u)
         if not user or ph != user["password"]:
+            # Intentionally vague so someone can't tell whether the username exists.
             self.err.config(text="Invalid username or password.")
             self.p.delete(0, "end")
             return
@@ -447,6 +484,7 @@ class LoginScreen(tk.Frame):
 
     def on_show(self, **kw):
         self.app.geometry("460x580")
+        # Pre-fill the username if the user had "Remember me" checked last time.
         remembered = load_remember()
         self.u.delete(0, "end")
         if remembered:
@@ -466,7 +504,7 @@ class SignupScreen(tk.Frame):
         super().__init__(parent, bg=BG)
         self.app = app
 
-        tk.Label(self, text="UserVault", bg=BG, fg=TEXT,
+        tk.Label(self, text="MyAccount", bg=BG, fg=TEXT,
                  font=(FONT, 22, "bold")).pack(pady=(32, 4))
         tk.Label(self, text="Create a new account", bg=BG, fg=MUTED,
                  font=(FONT, 9)).pack(pady=(0, 18))
@@ -502,6 +540,7 @@ class SignupScreen(tk.Frame):
         lnk.bind("<Button-1>", lambda _: app.show("LoginScreen"))
 
     def _update_strength(self):
+        # Runs on every keypress in the password field to keep the strength bar in sync.
         bars, label, color = pw_strength(self.p.get())
         for i, seg in enumerate(self._bars):
             seg.config(bg=color if i < bars else BORDER)
@@ -514,6 +553,7 @@ class SignupScreen(tk.Frame):
         cp = self.cp.get()
         self.err.config(text="", fg=DANGER)
 
+        # Validate in order and stop at the first failure so only one error shows at a time.
         if not all([u, e, p, cp]):
             self.err.config(text="All fields are required.")
             return
@@ -533,6 +573,7 @@ class SignupScreen(tk.Frame):
 
         insert_user(u, e, hash_pw(p))
         self.err.config(text="Account created! Redirecting…", fg=SUCCESS)
+        # Wait 1.2 seconds so the user can read the success message before switching screens.
         self.after(1200, lambda: (self._clear(), self.app.show("LoginScreen")))
 
     def _clear(self):
@@ -554,7 +595,7 @@ class WelcomeScreen(tk.Frame):
         super().__init__(parent, bg=BG)
         self.app = app
 
-        tk.Label(self, text="UserVault", bg=BG, fg=TEXT,
+        tk.Label(self, text="MyAccount", bg=BG, fg=TEXT,
                  font=(FONT, 22, "bold")).pack(pady=(56, 4))
         tk.Label(self, text="●", bg=BG, fg=SUCCESS,
                  font=(FONT, 10)).pack()
@@ -569,6 +610,7 @@ class WelcomeScreen(tk.Frame):
         tk.Frame(c, bg=BORDER, height=1).pack(fill="x", pady=8)
 
         def _row(label):
+            # Helper that builds one label-value pair inside the account details card.
             f = tk.Frame(c, bg=SURFACE)
             f.pack(fill="x", pady=3)
             tk.Label(f, text=label, bg=SURFACE, fg=MUTED,
@@ -591,6 +633,7 @@ class WelcomeScreen(tk.Frame):
         self.username_val.config(text=username)
         self.email_val.config(text=email)
         try:
+            # Convert "2025-01-15 14:30:00" into a nicer format like "January 15, 2025".
             dt = datetime.strptime(created_at, "%Y-%m-%d %H:%M:%S")
             self.joined.config(text=dt.strftime("%B %d, %Y"))
         except ValueError:
@@ -603,7 +646,7 @@ class AdminScreen(tk.Frame):
         super().__init__(parent, bg=BG)
         self.app = app
 
-        tk.Label(self, text="UserVault", bg=BG, fg=TEXT,
+        tk.Label(self, text="MyAccount", bg=BG, fg=TEXT,
                  font=(FONT, 22, "bold")).pack(pady=(20, 2))
 
         hdr = tk.Frame(self, bg=BG)
@@ -629,7 +672,7 @@ class AdminScreen(tk.Frame):
 
         wrapper = tk.Frame(self, bg=BORDER, height=185)
         wrapper.pack(padx=20, fill="x")
-        wrapper.pack_propagate(False)
+        wrapper.pack_propagate(False)  # lock the table to a fixed height so it doesn't grow
 
         cols = ("id", "username", "email", "created_at")
         self.tree = ttk.Treeview(wrapper, columns=cols, show="headings",
@@ -671,6 +714,8 @@ class AdminScreen(tk.Frame):
         self.add_err.pack(padx=20, fill="x", pady=(6, 0))
 
         def _btn_row(pairs, pady):
+            # Builds a row of evenly spaced buttons. Using two rows of two avoids
+            # a Canvas rendering bug where a third button in the same row stays invisible.
             row = tk.Frame(self, bg=BG)
             row.pack(padx=20, fill="x", pady=pady)
             for text, color, cmd in pairs:
@@ -714,13 +759,14 @@ class AdminScreen(tk.Frame):
         self._load()
 
     def _export_csv(self):
+        # Opens a save dialog so the user picks where to save the file.
         path = filedialog.asksaveasfilename(
             defaultextension=".csv",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
             initialfile="users_export.csv",
             title="Export users")
         if not path:
-            return
+            return  # user cancelled the dialog
         rows = get_all_users()
         with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
@@ -733,6 +779,7 @@ class AdminScreen(tk.Frame):
         sel = self.tree.selection()
         if not sel:
             return
+        # Pull the username out of column index 1 in the selected row.
         username = self.tree.item(sel[0])["values"][1]
         with sqlite3.connect(DB) as c:
             c.execute("DELETE FROM users WHERE username=?", (username,))
@@ -740,6 +787,7 @@ class AdminScreen(tk.Frame):
         self._load()
 
     def _load(self):
+        # Clear the table then refill it from the database.
         for row in self.tree.get_children():
             self.tree.delete(row)
         rows = get_all_users()
